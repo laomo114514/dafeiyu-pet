@@ -1,32 +1,53 @@
 package com.laomo.pet
 
+import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
-import android.widget.Toast
+import android.widget.TextView
 import kotlin.math.abs
+import kotlin.math.sin
 
 class PetService : Service() {
 
     private lateinit var windowManager: WindowManager
     private lateinit var petView: ImageView
     private lateinit var params: WindowManager.LayoutParams
+    private var bubbleView: TextView? = null
+    private var bubbleParams: WindowManager.LayoutParams? = null
+    private var baseY = 600
+    private var animator: ValueAnimator? = null
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val lines = listOf(
+        "别戳我，痒（尾巴甩了一下）",
+        "本鲸鱼在看着你呢",
+        "今天也要好好的",
+        "饿了…有白饭吗",
+        "困了，别吵",
+        "你刚才是不是在偷看我"
+    )
 
     override fun onCreate() {
         super.onCreate()
         startForeground(1, buildNotification())
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         showPet()
+        startFloat()
     }
 
     private fun buildNotification(): Notification {
@@ -77,7 +98,7 @@ class PetService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 200
-            y = 600
+            y = baseY
         }
 
         petView.setOnTouchListener(object : View.OnTouchListener {
@@ -89,6 +110,8 @@ class PetService : Service() {
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
+                        animator?.cancel()
+                        baseY = params.y
                         startX = params.x
                         startY = params.y
                         downX = event.rawX
@@ -102,13 +125,11 @@ class PetService : Service() {
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
-                        if (abs(event.rawX - downX) < 10 && abs(event.rawY - downY) < 10) {
-                            Toast.makeText(
-                                this@PetService,
-                                "别戳我，痒（尾巴甩了一下）",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                        if (abs(event.rawX - downX) < 12 && abs(event.rawY - downY) < 12) {
+                            showBubble()
                         }
+                        baseY = params.y
+                        startFloat()
                         return true
                     }
                 }
@@ -119,8 +140,87 @@ class PetService : Service() {
         windowManager.addView(petView, params)
     }
 
+    private fun startFloat() {
+        animator?.cancel()
+        animator = ValueAnimator.ofFloat(0f, (2 * Math.PI).toFloat()).apply {
+            duration = 3000
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { anim ->
+                val v = anim.animatedValue as Float
+                params.y = baseY + (sin(v) * 10).toInt()
+                petView.rotation = sin(v) * 4f
+                try {
+                    windowManager.updateViewLayout(petView, params)
+                } catch (e: Exception) {
+                }
+            }
+            start()
+        }
+    }
+
+    private fun showBubble() {
+        val text = lines.random()
+
+        if (bubbleView == null) {
+            bubbleView = TextView(this).apply {
+                setTextColor(Color.parseColor("#333333"))
+                textSize = 14f
+                setPadding(36, 20, 36, 20)
+                background = GradientDrawable().apply {
+                    cornerRadius = 32f
+                    setColor(Color.parseColor("#F2FFFFFF"))
+                }
+            }
+
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+
+            bubbleParams = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                type,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+            }
+
+            try {
+                windowManager.addView(bubbleView, bubbleParams)
+            } catch (e: Exception) {
+            }
+        }
+
+        bubbleView?.text = text
+        bubbleParams?.let { bp ->
+            bp.x = params.x
+            bp.y = (params.y - 110).coerceAtLeast(0)
+            try {
+                windowManager.updateViewLayout(bubbleView, bp)
+            } catch (e: Exception) {
+            }
+        }
+        bubbleView?.visibility = View.VISIBLE
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed({
+            bubbleView?.visibility = View.GONE
+        }, 2500)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        animator?.cancel()
+        handler.removeCallbacksAndMessages(null)
+        try {
+            bubbleView?.let { windowManager.removeView(it) }
+        } catch (e: Exception) {
+        }
         if (this::petView.isInitialized) {
             try {
                 windowManager.removeView(petView)
