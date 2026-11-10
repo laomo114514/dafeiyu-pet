@@ -1,6 +1,5 @@
 package com.laomo.pet
 
-import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,46 +7,47 @@ import android.app.Service
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.ImageView
-import android.widget.TextView
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.webkit.WebViewAssetLoader
+import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipInputStream
 import kotlin.math.abs
-import kotlin.math.sin
 
 class PetService : Service() {
 
     private lateinit var windowManager: WindowManager
-    private lateinit var petView: ImageView
+    private lateinit var webView: WebView
     private lateinit var params: WindowManager.LayoutParams
-    private var bubbleView: TextView? = null
-    private var bubbleParams: WindowManager.LayoutParams? = null
-    private var baseY = 600
-    private var animator: ValueAnimator? = null
-    private val handler = Handler(Looper.getMainLooper())
-
-    private val lines = listOf(
-        "别戳我，痒（尾巴甩了一下）",
-        "本鲸鱼在看着你呢",
-        "今天也要好好的",
-        "饿了…有白饭吗",
-        "困了，别吵",
-        "你刚才是不是在偷看我"
-    )
+    private lateinit var assetLoader: WebViewAssetLoader
 
     override fun onCreate() {
         super.onCreate()
         startForeground(1, buildNotification())
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        prepareModel()
+
+        assetLoader = WebViewAssetLoader.Builder()
+            .setDomain("appassets.androidplatform.net")
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler(
+                "/model/",
+                WebViewAssetLoader.InternalStoragePathHandler(this, File(filesDir, "model"))
+            )
+            .build()
+
         showPet()
-        startFloat()
     }
 
     private fun buildNotification(): Notification {
@@ -61,24 +61,93 @@ class PetService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
             return Notification.Builder(this, channelId)
                 .setContentTitle("大肥鱼桌宠")
-                .setContentText("小人正在屏幕上陪你")
+                .setContentText("鲸鱼娘正在桌面上")
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .build()
         } else {
             @Suppress("DEPRECATION")
             return Notification.Builder(this)
                 .setContentTitle("大肥鱼桌宠")
-                .setContentText("小人正在屏幕上陪你")
+                .setContentText("鲸鱼娘正在桌面上")
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .build()
         }
     }
 
-    private fun showPet() {
-        val size = (140 * resources.displayMetrics.density).toInt()
+    private fun prepareModel() {
+        val target = File(filesDir, "model")
+        if (findModelJson(target) != null) return
 
-        petView = ImageView(this).apply {
-            setImageResource(R.drawable.pet)
+        target.mkdirs()
+        try {
+            assets.open("model.zip").use { input ->
+                ZipInputStream(input).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        val outFile = File(target, entry.name)
+                        if (entry.isDirectory) {
+                            outFile.mkdirs()
+                        } else {
+                            outFile.parentFile?.mkdirs()
+                            FileOutputStream(outFile).use { fos ->
+                                val buffer = ByteArray(8192)
+                                var len = zis.read(buffer)
+                                while (len > 0) {
+                                    fos.write(buffer, 0, len)
+                                    len = zis.read(buffer)
+                                }
+                            }
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            }
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun findModelJson(dir: File): File? {
+        if (!dir.exists()) return null
+        val files = dir.listFiles() ?: return null
+        for (f in files) {
+            if (f.isFile && f.name.endsWith(".model3.json")) return f
+        }
+        for (f in files) {
+            if (f.isDirectory) {
+                val found = findModelJson(f)
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    private fun modelRelPath(): String {
+        val root = File(filesDir, "model")
+        val json = findModelJson(root) ?: return ""
+        return json.relativeTo(root).path.replace("\\", "/")
+    }
+
+    private fun showPet() {
+        val width = (220 * resources.displayMetrics.density).toInt()
+        val height = (300 * resources.displayMetrics.density).toInt()
+
+        webView = WebView(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = true
+            settings.builtInZoomControls = false
+            settings.displayZoomControls = false
+            settings.mediaPlaybackRequiresUserGesture = false
+            webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): WebResourceResponse? {
+                    return assetLoader.shouldInterceptRequest(request.url)
+                }
+            }
         }
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -89,8 +158,8 @@ class PetService : Service() {
         }
 
         params = WindowManager.LayoutParams(
-            size,
-            size,
+            width,
+            height,
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -98,10 +167,15 @@ class PetService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 200
-            y = baseY
+            y = 600
         }
 
-        petView.setOnTouchListener(object : View.OnTouchListener {
+        val rel = modelRelPath()
+        val url = "https://appassets.androidplatform.net/assets/live2d.html?model=" +
+            Uri.encode(rel)
+        webView.loadUrl(url)
+
+        webView.setOnTouchListener(object : View.OnTouchListener {
             private var startX = 0
             private var startY = 0
             private var downX = 0f
@@ -110,8 +184,6 @@ class PetService : Service() {
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        animator?.cancel()
-                        baseY = params.y
                         startX = params.x
                         startY = params.y
                         downX = event.rawX
@@ -121,15 +193,16 @@ class PetService : Service() {
                     MotionEvent.ACTION_MOVE -> {
                         params.x = startX + (event.rawX - downX).toInt()
                         params.y = startY + (event.rawY - downY).toInt()
-                        windowManager.updateViewLayout(petView, params)
+                        windowManager.updateViewLayout(webView, params)
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
                         if (abs(event.rawX - downX) < 12 && abs(event.rawY - downY) < 12) {
-                            showBubble()
+                            webView.evaluateJavascript(
+                                "window.tapPet && window.tapPet()",
+                                null
+                            )
                         }
-                        baseY = params.y
-                        startFloat()
                         return true
                     }
                 }
@@ -137,93 +210,18 @@ class PetService : Service() {
             }
         })
 
-        windowManager.addView(petView, params)
-    }
-
-    private fun startFloat() {
-        animator?.cancel()
-        animator = ValueAnimator.ofFloat(0f, (2 * Math.PI).toFloat()).apply {
-            duration = 3000
-            repeatCount = ValueAnimator.INFINITE
-            addUpdateListener { anim ->
-                val v = anim.animatedValue as Float
-                params.y = baseY + (sin(v) * 10).toInt()
-                petView.rotation = sin(v) * 4f
-                try {
-                    windowManager.updateViewLayout(petView, params)
-                } catch (e: Exception) {
-                }
-            }
-            start()
-        }
-    }
-
-    private fun showBubble() {
-        val text = lines.random()
-
-        if (bubbleView == null) {
-            bubbleView = TextView(this).apply {
-                setTextColor(Color.parseColor("#333333"))
-                textSize = 14f
-                setPadding(36, 20, 36, 20)
-                background = GradientDrawable().apply {
-                    cornerRadius = 32f
-                    setColor(Color.parseColor("#F2FFFFFF"))
-                }
-            }
-
-            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            }
-
-            bubbleParams = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                type,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-            }
-
-            try {
-                windowManager.addView(bubbleView, bubbleParams)
-            } catch (e: Exception) {
-            }
-        }
-
-        bubbleView?.text = text
-        bubbleParams?.let { bp ->
-            bp.x = params.x
-            bp.y = (params.y - 110).coerceAtLeast(0)
-            try {
-                windowManager.updateViewLayout(bubbleView, bp)
-            } catch (e: Exception) {
-            }
-        }
-        bubbleView?.visibility = View.VISIBLE
-
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed({
-            bubbleView?.visibility = View.GONE
-        }, 2500)
+        windowManager.addView(webView, params)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        animator?.cancel()
-        handler.removeCallbacksAndMessages(null)
         try {
-            bubbleView?.let { windowManager.removeView(it) }
+            webView.destroy()
         } catch (e: Exception) {
         }
-        if (this::petView.isInitialized) {
+        if (this::webView.isInitialized) {
             try {
-                windowManager.removeView(petView)
+                windowManager.removeView(webView)
             } catch (e: Exception) {
             }
         }
