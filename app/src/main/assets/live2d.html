@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  canvas { display: block; background: transparent; }
+</style>
+</head>
+<body>
+<script src="/assets/pixi.min.js"></script>
+<script src="/assets/live2dcubismcore.min.js"></script>
+<script src="/assets/cubism4.min.js"></script>
+<script>
+(async function () {
+  const params = new URLSearchParams(location.search);
+  const modelPath = params.get('model') || '';
+
+  const app = new PIXI.Application({
+    transparent: true,
+    antialias: true,
+    resizeTo: window
+  });
+  document.body.appendChild(app.view);
+
+  try {
+    const model = await PIXI.live2d.Live2DModel.from(
+      '/model/' + encodeURI(modelPath),
+      { autoInteract: false }
+    );
+
+    const scale = Math.min(
+      app.screen.width / model.width,
+      app.screen.height / model.height
+    ) * 1.05;
+
+    model.scale.set(scale);
+    model.x = (app.screen.width - model.width * scale) / 2;
+    model.y = app.screen.height - model.height * scale;
+    app.stage.addChild(model);
+
+    const groups = Object.keys(model.internalModel.motionManager.definitions || {});
+    const idleGroup = groups.find(g => g.toLowerCase().includes('idle')) || groups[0];
+    if (idleGroup) {
+      model.internalModel.motionManager.startRandomMotion(idleGroup);
+    }
+
+    window.tapPet = function () {
+      try {
+        const gs = Object.keys(model.internalModel.motionManager.definitions || {});
+        if (gs.length > 0) {
+          model.motion(gs[Math.floor(Math.random() * gs.length)]);
+        }
+      } catch (e) {
+      }
+    };
+  } catch (e) {
+    document.body.innerHTML =
+      '<pre style="color:#ff5555;font-size:12px;padding:8px">' + e + '</pre>';
+  }
+})();
+</script>
+</body>
+</html>
