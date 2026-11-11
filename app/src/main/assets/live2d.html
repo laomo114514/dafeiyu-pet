@@ -3,8 +3,14 @@
 <head>
 <meta charset="utf-8">
 <style>
-  html, body { margin: 0; padding: 0; background: rgba(180, 0, 0, 0.55); color: #fff; font-size: 12px; font-family: sans-serif; overflow: hidden; }
-  #log { padding: 8px; line-height: 1.5; word-break: break-all; }
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 100%; height: 100%; }
+  canvas { position: fixed !important; top: 0 !important; left: 0 !important; }
+  #log {
+    position: absolute; top: 0; left: 0; z-index: 10;
+    padding: 6px; background: rgba(0, 0, 0, 0.55);
+    color: #fff; font-size: 11px; font-family: sans-serif;
+    line-height: 1.4; word-break: break-all; max-width: 100%;
+  }
 </style>
 </head>
 <body>
@@ -18,7 +24,7 @@ function loadScript(src) {
   return new Promise(function (res) {
     var s = document.createElement('script');
     s.src = src;
-    s.onload = function () { log('OK ' + src); res(); };
+    s.onload = function () { res(); };
     s.onerror = function () { log('FAIL ' + src); res(); };
     document.head.appendChild(s);
   });
@@ -27,41 +33,47 @@ function loadScript(src) {
 (async function () {
   var params = new URLSearchParams(location.search);
   var modelPath = params.get('model') || '';
-  log('[2] model 参数: ' + (modelPath || '(空)'));
 
   await loadScript('/assets/pixi.min.js');
   await loadScript('/assets/live2dcubismcore.min.js');
   await loadScript('/assets/cubism4.min.js');
 
-  log('[3] PIXI: ' + (typeof PIXI) + ', PIXI.live2d: ' + (typeof PIXI !== 'undefined' ? typeof PIXI.live2d : 'n/a'));
-
   if (typeof PIXI === 'undefined' || !PIXI.live2d) {
-    log('[X] 库没加载成功，停止');
+    log('[X] 库加载失败');
     return;
   }
 
   try {
-    var app = new PIXI.Application({ transparent: true, antialias: true, resizeTo: window });
+    var app = new PIXI.Application({
+      transparent: true,
+      antialias: true,
+      resizeTo: window
+    });
     document.body.appendChild(app.view);
-    log('[4] PIXI Application 已创建');
+    log('[2] 画布: ' + app.screen.width + ' x ' + app.screen.height);
 
     var model = await PIXI.live2d.Live2DModel.from(
       '/model/' + encodeURI(modelPath),
       { autoInteract: false }
     );
-    log('[5] 模型已加载: ' + model.width + ' x ' + model.height);
 
-    var scale = Math.min(app.screen.width / model.width, app.screen.height / model.height) * 1.05;
+    var scale = Math.min(
+      app.screen.width / model.width,
+      app.screen.height / model.height
+    ) * 0.95;
+
+    model.anchor.set(0, 0);
     model.scale.set(scale);
     model.x = (app.screen.width - model.width * scale) / 2;
-    model.y = app.screen.height - model.height * scale;
+    model.y = (app.screen.height - model.height * scale) / 2;
     app.stage.addChild(model);
 
+    log('[3] 模型: ' + model.width.toFixed(0) + ' x ' + model.height.toFixed(0) +
+        ' 缩放: ' + scale.toFixed(4) +
+        ' 位置: ' + model.x.toFixed(0) + ',' + model.y.toFixed(0));
+
     var groups = Object.keys(model.internalModel.motionManager.definitions || {});
-    log('[6] 动作组: ' + groups.join(', '));
-    if (groups.length > 0) {
-      model.internalModel.motionManager.startRandomMotion(groups[0]);
-    }
+    log('[4] 动作组: ' + (groups.length ? groups.join(',') : '无'));
 
     window.tapPet = function () {
       try {
