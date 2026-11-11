@@ -129,8 +129,8 @@ class PetService : Service() {
     }
 
     private fun showPet() {
-        val width = (220 * resources.displayMetrics.density).toInt()
-        val height = (300 * resources.displayMetrics.density).toInt()
+        val width = (170 * resources.displayMetrics.density).toInt()
+        val height = (240 * resources.displayMetrics.density).toInt()
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
