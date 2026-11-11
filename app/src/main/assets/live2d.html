@@ -5,27 +5,16 @@
 <style>
   html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 100%; height: 100%; }
   canvas { position: fixed !important; top: 0 !important; left: 0 !important; }
-  #log {
-    position: absolute; top: 0; left: 0; z-index: 10;
-    padding: 6px; background: rgba(0, 0, 0, 0.55);
-    color: #fff; font-size: 11px; font-family: sans-serif;
-    line-height: 1.4; word-break: break-all; max-width: 100%;
-  }
 </style>
 </head>
 <body>
-<div id="log">[1] 页面已加载</div>
 <script>
-var logEl = document.getElementById('log');
-function log(msg) { logEl.innerHTML += '<br>' + msg; }
-window.onerror = function (m, s, l) { log('ERR: ' + m + ' @' + l); };
-
 function loadScript(src) {
   return new Promise(function (res) {
     var s = document.createElement('script');
     s.src = src;
     s.onload = function () { res(); };
-    s.onerror = function () { log('FAIL ' + src); res(); };
+    s.onerror = function () { res(); };
     document.head.appendChild(s);
   });
 }
@@ -38,10 +27,7 @@ function loadScript(src) {
   await loadScript('/assets/live2dcubismcore.min.js');
   await loadScript('/assets/cubism4.min.js');
 
-  if (typeof PIXI === 'undefined' || !PIXI.live2d) {
-    log('[X] 库加载失败');
-    return;
-  }
+  if (typeof PIXI === 'undefined' || !PIXI.live2d) return;
 
   try {
     var app = new PIXI.Application({
@@ -50,30 +36,31 @@ function loadScript(src) {
       resizeTo: window
     });
     document.body.appendChild(app.view);
-    log('[2] 画布: ' + app.screen.width + ' x ' + app.screen.height);
 
     var model = await PIXI.live2d.Live2DModel.from(
       '/model/' + encodeURI(modelPath),
       { autoInteract: false }
     );
 
-    var scale = Math.min(
-      app.screen.width / model.width,
-      app.screen.height / model.height
-    ) * 0.95;
-
-    model.anchor.set(0, 0);
-    model.scale.set(scale);
-    model.x = (app.screen.width - model.width * scale) / 2;
-    model.y = (app.screen.height - model.height * scale) / 2;
     app.stage.addChild(model);
 
-    log('[3] 模型: ' + model.width.toFixed(0) + ' x ' + model.height.toFixed(0) +
-        ' 缩放: ' + scale.toFixed(4) +
-        ' 位置: ' + model.x.toFixed(0) + ',' + model.y.toFixed(0));
+    var b = model.getLocalBounds();
+    var scale = Math.min(
+      app.screen.width / b.width,
+      app.screen.height / b.height
+    ) * 0.98;
+
+    model.scale.set(scale);
+
+    model.x = (app.screen.width - b.width * scale) / 2 - b.x * scale;
+    model.y = (app.screen.height - b.height * scale) / 2 - b.y * scale;
+
+    model.anchor.set(0, 0);
 
     var groups = Object.keys(model.internalModel.motionManager.definitions || {});
-    log('[4] 动作组: ' + (groups.length ? groups.join(',') : '无'));
+    if (groups.length > 0) {
+      model.internalModel.motionManager.startRandomMotion(groups[0]);
+    }
 
     window.tapPet = function () {
       try {
@@ -83,7 +70,6 @@ function loadScript(src) {
       } catch (e) {}
     };
   } catch (e) {
-    log('[X] 模型加载失败: ' + e);
   }
 })();
 </script>
