@@ -21,6 +21,7 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.charset.Charset
 import java.util.zip.ZipInputStream
 import kotlin.math.abs
 
@@ -76,12 +77,25 @@ class PetService : Service() {
 
     private fun prepareModel() {
         val target = File(filesDir, "model")
-        if (findModelJson(target) != null) return
 
+        if (findModelJson(target) != null && hasMotionFiles(target)) return
+
+        target.deleteRecursively()
         target.mkdirs()
+
+        extractZip("UTF-8", target)
+
+        if (!hasMotionFiles(target)) {
+            target.deleteRecursively()
+            target.mkdirs()
+            extractZip("GBK", target)
+        }
+    }
+
+    private fun extractZip(charsetName: String, target: File) {
         try {
             assets.open("model.zip").use { input ->
-                ZipInputStream(input).use { zis ->
+                ZipInputStream(input, Charset.forName(charsetName)).use { zis ->
                     var entry = zis.nextEntry
                     while (entry != null) {
                         val outFile = File(target, entry.name)
@@ -120,6 +134,16 @@ class PetService : Service() {
             }
         }
         return null
+    }
+
+    private fun hasMotionFiles(dir: File): Boolean {
+        if (!dir.exists()) return false
+        val files = dir.listFiles() ?: return false
+        for (f in files) {
+            if (f.isFile && f.name.endsWith(".motion3.json")) return true
+            if (f.isDirectory && hasMotionFiles(f)) return true
+        }
+        return false
     }
 
     private fun modelRelPath(): String {
