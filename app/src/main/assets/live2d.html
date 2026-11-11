@@ -2,62 +2,76 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
-  canvas { display: block; background: transparent; }
+  html, body { margin: 0; padding: 0; background: rgba(180, 0, 0, 0.55); color: #fff; font-size: 12px; font-family: sans-serif; overflow: hidden; }
+  #log { padding: 8px; line-height: 1.5; word-break: break-all; }
 </style>
 </head>
 <body>
-<script src="/assets/pixi.min.js"></script>
-<script src="/assets/live2dcubismcore.min.js"></script>
-<script src="/assets/cubism4.min.js"></script>
+<div id="log">[1] 页面已加载</div>
 <script>
-(async function () {
-  const params = new URLSearchParams(location.search);
-  const modelPath = params.get('model') || '';
+var logEl = document.getElementById('log');
+function log(msg) { logEl.innerHTML += '<br>' + msg; }
+window.onerror = function (m, s, l) { log('ERR: ' + m + ' @' + l); };
 
-  const app = new PIXI.Application({
-    transparent: true,
-    antialias: true,
-    resizeTo: window
+function loadScript(src) {
+  return new Promise(function (res) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.onload = function () { log('OK ' + src); res(); };
+    s.onerror = function () { log('FAIL ' + src); res(); };
+    document.head.appendChild(s);
   });
-  document.body.appendChild(app.view);
+}
+
+(async function () {
+  var params = new URLSearchParams(location.search);
+  var modelPath = params.get('model') || '';
+  log('[2] model 参数: ' + (modelPath || '(空)'));
+
+  await loadScript('/assets/pixi.min.js');
+  await loadScript('/assets/live2dcubismcore.min.js');
+  await loadScript('/assets/cubism4.min.js');
+
+  log('[3] PIXI: ' + (typeof PIXI) + ', PIXI.live2d: ' + (typeof PIXI !== 'undefined' ? typeof PIXI.live2d : 'n/a'));
+
+  if (typeof PIXI === 'undefined' || !PIXI.live2d) {
+    log('[X] 库没加载成功，停止');
+    return;
+  }
 
   try {
-    const model = await PIXI.live2d.Live2DModel.from(
+    var app = new PIXI.Application({ transparent: true, antialias: true, resizeTo: window });
+    document.body.appendChild(app.view);
+    log('[4] PIXI Application 已创建');
+
+    var model = await PIXI.live2d.Live2DModel.from(
       '/model/' + encodeURI(modelPath),
       { autoInteract: false }
     );
+    log('[5] 模型已加载: ' + model.width + ' x ' + model.height);
 
-    const scale = Math.min(
-      app.screen.width / model.width,
-      app.screen.height / model.height
-    ) * 1.05;
-
+    var scale = Math.min(app.screen.width / model.width, app.screen.height / model.height) * 1.05;
     model.scale.set(scale);
     model.x = (app.screen.width - model.width * scale) / 2;
     model.y = app.screen.height - model.height * scale;
     app.stage.addChild(model);
 
-    const groups = Object.keys(model.internalModel.motionManager.definitions || {});
-    const idleGroup = groups.find(g => g.toLowerCase().includes('idle')) || groups[0];
-    if (idleGroup) {
-      model.internalModel.motionManager.startRandomMotion(idleGroup);
+    var groups = Object.keys(model.internalModel.motionManager.definitions || {});
+    log('[6] 动作组: ' + groups.join(', '));
+    if (groups.length > 0) {
+      model.internalModel.motionManager.startRandomMotion(groups[0]);
     }
 
     window.tapPet = function () {
       try {
-        const gs = Object.keys(model.internalModel.motionManager.definitions || {});
-        if (gs.length > 0) {
-          model.motion(gs[Math.floor(Math.random() * gs.length)]);
+        if (groups.length > 0) {
+          model.motion(groups[Math.floor(Math.random() * groups.length)]);
         }
-      } catch (e) {
-      }
+      } catch (e) {}
     };
   } catch (e) {
-    document.body.innerHTML =
-      '<pre style="color:#ff5555;font-size:12px;padding:8px">' + e + '</pre>';
+    log('[X] 模型加载失败: ' + e);
   }
 })();
 </script>
