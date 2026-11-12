@@ -225,6 +225,8 @@ class PetService : Service() {
             settings.builtInZoomControls = false
             settings.displayZoomControls = false
             settings.mediaPlaybackRequiresUserGesture = false
+            settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+            clearCache(true)
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView,
