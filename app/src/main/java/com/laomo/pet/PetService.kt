@@ -19,6 +19,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.Charset
@@ -78,18 +80,18 @@ class PetService : Service() {
     private fun prepareModel() {
         val target = File(filesDir, "model")
 
-        if (findModelJson(target) != null && hasMotionFiles(target)) return
-
-        target.deleteRecursively()
-        target.mkdirs()
-
-        extractZip("UTF-8", target)
-
-        if (!hasMotionFiles(target)) {
+        if (findModelJson(target) == null || !hasMotionFiles(target)) {
             target.deleteRecursively()
             target.mkdirs()
-            extractZip("GBK", target)
+            extractZip("UTF-8", target)
+            if (!hasMotionFiles(target)) {
+                target.deleteRecursively()
+                target.mkdirs()
+                extractZip("GBK", target)
+            }
         }
+
+        findModelJson(target)?.let { patchModelJson(it) }
     }
 
     private fun extractZip(charsetName: String, target: File) {
@@ -117,6 +119,45 @@ class PetService : Service() {
                     }
                 }
             }
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun patchModelJson(jsonFile: File) {
+        try {
+            val root = JSONObject(jsonFile.readText())
+
+            if (!root.has("Motions")) {
+                val motionsDir = File(jsonFile.parentFile, "motions")
+                val idleList = JSONArray()
+                val tapList = JSONArray()
+                motionsDir.listFiles()?.sortedBy { it.name }?.forEach { f ->
+                    if (f.name.endsWith(".motion3.json")) {
+                        val item = JSONObject().put("File", "motions/" + f.name)
+                        if (f.name.startsWith("idle")) idleList.put(item) else tapList.put(item)
+                    }
+                }
+                val motions = JSONObject()
+                if (idleList.length() > 0) motions.put("Idle", idleList)
+                if (tapList.length() > 0) motions.put("TapBody", tapList)
+                if (motions.length() > 0) root.put("Motions", motions)
+            }
+
+            if (!root.has("Expressions")) {
+                val exps = JSONArray()
+                jsonFile.parentFile?.listFiles()?.sortedBy { it.name }?.forEach { f ->
+                    if (f.name.endsWith(".exp3.json")) {
+                        exps.put(
+                            JSONObject()
+                                .put("Name", f.name.removeSuffix(".exp3.json"))
+                                .put("File", f.name)
+                        )
+                    }
+                }
+                if (exps.length() > 0) root.put("Expressions", exps)
+            }
+
+            jsonFile.writeText(root.toString())
         } catch (e: Exception) {
         }
     }
