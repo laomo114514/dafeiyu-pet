@@ -18,6 +18,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
 import org.json.JSONObject
@@ -91,7 +92,12 @@ class PetService : Service() {
             }
         }
 
-        findModelJson(target)?.let { patchModelJson(it) }
+        val json = findModelJson(target)
+        if (json != null) {
+            val err = patchModelJson(json)
+            val msg = if (err.isEmpty()) modelInfo(json) else err
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun extractZip(charsetName: String, target: File) {
@@ -123,9 +129,10 @@ class PetService : Service() {
         }
     }
 
-    private fun patchModelJson(jsonFile: File) {
-        try {
-            val root = JSONObject(jsonFile.readText())
+    private fun patchModelJson(jsonFile: File): String {
+        return try {
+            val raw = jsonFile.readText().trimStart('\uFEFF')
+            val root = JSONObject(raw)
 
             if (!root.has("Motions")) {
                 val motionsDir = File(jsonFile.parentFile, "motions")
@@ -158,7 +165,20 @@ class PetService : Service() {
             }
 
             jsonFile.writeText(root.toString())
+            ""
         } catch (e: Exception) {
+            "patch失败: " + (e.message ?: e.toString())
+        }
+    }
+
+    private fun modelInfo(jsonFile: File): String {
+        return try {
+            val root = JSONObject(jsonFile.readText().trimStart('\uFEFF'))
+            val m = root.optJSONObject("Motions")?.length() ?: 0
+            val e = root.optJSONArray("Expressions")?.length() ?: 0
+            "动作组=$m 表情=$e"
+        } catch (e: Exception) {
+            "读取json失败"
         }
     }
 
