@@ -130,40 +130,56 @@ class PetService : Service() {
         }
     }
 
+    private fun isAscii(s: String): Boolean {
+        for (c in s) {
+            if (c.code > 127) return false
+        }
+        return true
+    }
+
     private fun patchModelJson(jsonFile: File): String {
         return try {
             val raw = jsonFile.readText().trimStart('\uFEFF')
             val root = JSONObject(raw)
 
-            if (!root.has("Motions")) {
-                val motionsDir = File(jsonFile.parentFile, "motions")
-                val idleList = JSONArray()
-                val tapList = JSONArray()
-                motionsDir.listFiles()?.sortedBy { it.name }?.forEach { f ->
-                    if (f.name.endsWith(".motion3.json")) {
-                        val item = JSONObject().put("File", "motions/" + f.name)
-                        if (f.name.startsWith("idle")) idleList.put(item) else tapList.put(item)
-                    }
+            val motionsDir = File(jsonFile.parentFile, "motions")
+            val motionFiles = motionsDir.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".motion3.json") }
+                ?.sortedBy { it.name } ?: emptyList()
+
+            val idleList = JSONArray()
+            val tapList = JSONArray()
+
+            motionFiles.forEachIndexed { index, f ->
+                var fileName = f.name
+                if (!isAscii(fileName)) {
+                    val newName = "m" + index + ".motion3.json"
+                    if (f.renameTo(File(f.parentFile, newName))) fileName = newName
                 }
-                val motions = JSONObject()
-                if (idleList.length() > 0) motions.put("Idle", idleList)
-                if (tapList.length() > 0) motions.put("TapBody", tapList)
-                if (motions.length() > 0) root.put("Motions", motions)
+                val item = JSONObject().put("File", "motions/" + fileName)
+                if (fileName.startsWith("idle")) idleList.put(item) else tapList.put(item)
             }
 
-            if (!root.has("Expressions")) {
-                val exps = JSONArray()
-                jsonFile.parentFile?.listFiles()?.sortedBy { it.name }?.forEach { f ->
-                    if (f.name.endsWith(".exp3.json")) {
-                        exps.put(
-                            JSONObject()
-                                .put("Name", f.name.removeSuffix(".exp3.json"))
-                                .put("File", f.name)
-                        )
-                    }
+            val motions = JSONObject()
+            if (idleList.length() > 0) motions.put("Idle", idleList)
+            if (tapList.length() > 0) motions.put("TapBody", tapList)
+            if (motions.length() > 0) root.put("Motions", motions)
+
+            val expFiles = jsonFile.parentFile?.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".exp3.json") }
+                ?.sortedBy { it.name } ?: emptyList()
+
+            val exps = JSONArray()
+            expFiles.forEachIndexed { index, f ->
+                var fileName = f.name
+                val displayName = f.name.removeSuffix(".exp3.json")
+                if (!isAscii(fileName)) {
+                    val newName = "e" + index + ".exp3.json"
+                    if (f.renameTo(File(f.parentFile, newName))) fileName = newName
                 }
-                if (exps.length() > 0) root.put("Expressions", exps)
+                exps.put(JSONObject().put("Name", displayName).put("File", fileName))
             }
+            if (exps.length() > 0) root.put("Expressions", exps)
 
             jsonFile.writeText(root.toString())
             ""
@@ -302,6 +318,10 @@ class PetService : Service() {
                     MotionEvent.ACTION_UP -> {
                         if (abs(event.rawX - downX) < 12 && abs(event.rawY - downY) < 12) {
                             bounce()
+                            webView.evaluateJavascript(
+                                "window.tapPet && window.tapPet()",
+                                null
+                            )
                         }
                         return true
                     }
