@@ -7,7 +7,7 @@
   canvas { position: fixed !important; top: 0 !important; left: 0 !important; }
   #dbg {
     position: absolute; top: 0; left: 0; z-index: 99;
-    background: rgba(0, 0, 0, 0.75); color: #66ff66;
+    background: rgba(0,0,0,0.75); color: #66ff66;
     font: 10px monospace; padding: 4px; max-width: 100%;
     white-space: pre-wrap; word-break: break-all;
   }
@@ -33,22 +33,18 @@ function loadScript(src) {
 (async function () {
   var params = new URLSearchParams(location.search);
   var modelPath = params.get('model') || '';
-  dbg('model=' + modelPath);
 
   await loadScript('/assets/pixi.min.js');
   await loadScript('/assets/live2dcubismcore.min.js');
   await loadScript('/assets/cubism4.min.js');
-  dbg('libs PIXI=' + (typeof PIXI) + ' live2d=' + (typeof PIXI !== 'undefined' ? typeof PIXI.live2d : 'na'));
 
-  if (typeof PIXI === 'undefined' || !PIXI.live2d) return;
+  if (typeof PIXI === 'undefined' || !PIXI.live2d) { dbg('no PIXI'); return; }
 
   try {
     var app = new PIXI.Application({ transparent: true, antialias: true, resizeTo: window });
     document.body.appendChild(app.view);
 
     var model = await PIXI.live2d.Live2DModel.from('/model/' + encodeURI(modelPath), { autoInteract: false });
-    dbg('model loaded');
-
     app.stage.addChild(model);
 
     var b = model.getLocalBounds();
@@ -58,23 +54,35 @@ function loadScript(src) {
     model.y = (app.screen.height - b.height * scale) / 2 - b.y * scale;
     model.anchor.set(0, 0);
 
-    var settings = model.internalModel.settings;
-    try {
-      var sj = settings.json || {};
-      dbg('json.Motions keys=' + JSON.stringify(Object.keys(sj.Motions || {})));
-      dbg('json.Expressions=' + ((sj.Expressions || []).length));
-    } catch (e) { dbg('settings err ' + e); }
-
+    var sj = model.internalModel.settings.json || {};
     var mgr = model.internalModel.motionManager;
     var defs = mgr.definitions || {};
     var groups = Object.keys(defs);
-    dbg('defs=' + groups.join(','));
-    groups.forEach(function (g) { dbg('  ' + g + ':' + defs[g].length); });
+    dbg('lib defs=' + groups.join(','));
 
-    if (groups.indexOf('Idle') >= 0) {
-      try { mgr.startRandomMotion('Idle'); dbg('idle started'); }
-      catch (e) { dbg('idle err ' + e); }
+    if (groups.length === 0 && sj.Motions) {
+      mgr.definitions = sj.Motions;
+      defs = mgr.definitions;
+      groups = Object.keys(defs);
+      dbg('manual defs=' + groups.join(','));
     }
+
+    if (groups.length > 0) {
+      try {
+        mgr.startRandomMotion(groups.indexOf('Idle') >= 0 ? 'Idle' : groups[0]);
+        dbg('motion started');
+      } catch (e) { dbg('start err ' + e); }
+    }
+
+    var app2 = app;
+    app2.ticker.add(function () {
+      var t = performance.now() / 1000;
+      try {
+        var core = model.internalModel.coreModel;
+        core.setParameterValueById('ParamAngleZ', Math.sin(t) * 4);
+        core.setParameterValueById('ParamBreath', (Math.sin(t * 2) + 1) / 2);
+      } catch (e) {}
+    });
 
     window.tapPet = function () {
       try {
@@ -83,7 +91,7 @@ function loadScript(src) {
           model.motion(g);
           dbg('tap -> ' + g);
         } else {
-          dbg('tap: no groups');
+          dbg('tap: still no groups');
         }
       } catch (e) { dbg('tap err ' + e); }
     };
