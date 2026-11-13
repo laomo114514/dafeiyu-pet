@@ -1,5 +1,6 @@
 package com.laomo.pet
 
+import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -213,6 +214,21 @@ class PetService : Service() {
         return json.relativeTo(root).path.replace("\\", "/")
     }
 
+    private fun bounce() {
+        val startY = params.y
+        val anim = ValueAnimator.ofFloat(0f, 1f)
+        anim.duration = 320
+        anim.addUpdateListener { a ->
+            val v = a.animatedValue as Float
+            params.y = startY - (Math.sin(v * Math.PI) * 30).toInt()
+            try {
+                windowManager.updateViewLayout(webView, params)
+            } catch (e: Exception) {
+            }
+        }
+        anim.start()
+    }
+
     private fun showPet() {
         val width = (170 * resources.displayMetrics.density).toInt()
         val height = (240 * resources.displayMetrics.density).toInt()
@@ -285,10 +301,7 @@ class PetService : Service() {
                     }
                     MotionEvent.ACTION_UP -> {
                         if (abs(event.rawX - downX) < 12 && abs(event.rawY - downY) < 12) {
-                            webView.evaluateJavascript(
-                                "window.tapPet && window.tapPet()",
-                                null
-                            )
+                            bounce()
                         }
                         return true
                     }
