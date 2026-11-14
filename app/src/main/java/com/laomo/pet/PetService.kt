@@ -103,10 +103,7 @@ class PetService : Service() {
             }
         }
 
-        val json = findModelJson(target)
-        if (json != null) {
-            patchModelJson(json)
-        }
+        findModelJson(target)?.let { patchModelJson(it) }
     }
 
     private fun extractZip(charsetName: String, target: File) {
@@ -150,6 +147,9 @@ class PetService : Service() {
             val raw = jsonFile.readText().trimStart('\uFEFF')
             val root = JSONObject(raw)
 
+            val fr = root.optJSONObject("FileReferences")
+                ?: JSONObject().also { root.put("FileReferences", it) }
+
             val motionsDir = File(jsonFile.parentFile, "motions")
             val motionFiles = motionsDir.listFiles()
                 ?.filter { it.isFile && it.name.endsWith(".motion3.json") }
@@ -174,7 +174,7 @@ class PetService : Service() {
             val motions = JSONObject()
             if (idleList.length() > 0) motions.put("Idle", idleList)
             if (tapList.length() > 0) motions.put("TapBody", tapList)
-            if (motions.length() > 0) root.put("Motions", motions)
+            if (motions.length() > 0) fr.put("Motions", motions)
 
             val expFiles = jsonFile.parentFile?.listFiles()
                 ?.filter { it.isFile && it.name.endsWith(".exp3.json") }
@@ -190,7 +190,10 @@ class PetService : Service() {
                 }
                 exps.put(JSONObject().put("Name", displayName).put("File", fileName))
             }
-            if (exps.length() > 0) root.put("Expressions", exps)
+            if (exps.length() > 0) fr.put("Expressions", exps)
+
+            root.remove("Motions")
+            root.remove("Expressions")
 
             jsonFile.writeText(root.toString())
         } catch (e: Exception) {
