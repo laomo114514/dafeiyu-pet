@@ -10,11 +10,14 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -35,6 +38,13 @@ class PetService : Service() {
     private lateinit var webView: WebView
     private lateinit var params: WindowManager.LayoutParams
     private lateinit var assetLoader: WebViewAssetLoader
+
+    inner class Bridge {
+        @JavascriptInterface
+        fun bounceFromJs() {
+            Handler(Looper.getMainLooper()).post { bounce() }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -95,9 +105,7 @@ class PetService : Service() {
 
         val json = findModelJson(target)
         if (json != null) {
-            val err = patchModelJson(json)
-            val msg = if (err.isEmpty()) modelInfo(json) else err
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            patchModelJson(json)
         }
     }
 
@@ -137,8 +145,8 @@ class PetService : Service() {
         return true
     }
 
-    private fun patchModelJson(jsonFile: File): String {
-        return try {
+    private fun patchModelJson(jsonFile: File) {
+        try {
             val raw = jsonFile.readText().trimStart('\uFEFF')
             val root = JSONObject(raw)
 
@@ -156,7 +164,10 @@ class PetService : Service() {
                     val newName = "m" + index + ".motion3.json"
                     if (f.renameTo(File(f.parentFile, newName))) fileName = newName
                 }
-                val item = JSONObject().put("File", "motions/" + fileName)
+                val item = JSONObject()
+                    .put("File", "motions/" + fileName)
+                    .put("FadeInTime", 0.5)
+                    .put("FadeOutTime", 0.5)
                 if (fileName.startsWith("idle")) idleList.put(item) else tapList.put(item)
             }
 
@@ -182,20 +193,7 @@ class PetService : Service() {
             if (exps.length() > 0) root.put("Expressions", exps)
 
             jsonFile.writeText(root.toString())
-            ""
         } catch (e: Exception) {
-            "patch失败: " + (e.message ?: e.toString())
-        }
-    }
-
-    private fun modelInfo(jsonFile: File): String {
-        return try {
-            val root = JSONObject(jsonFile.readText().trimStart('\uFEFF'))
-            val m = root.optJSONObject("Motions")?.length() ?: 0
-            val e = root.optJSONArray("Expressions")?.length() ?: 0
-            "动作组=$m 表情=$e"
-        } catch (e: Exception) {
-            "读取json失败"
         }
     }
 
@@ -246,8 +244,8 @@ class PetService : Service() {
     }
 
     private fun showPet() {
-        val width = (170 * resources.displayMetrics.density).toInt()
-        val height = (240 * resources.displayMetrics.density).toInt()
+        val width = (160 * resources.displayMetrics.density).toInt()
+        val height = (220 * resources.displayMetrics.density).toInt()
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
@@ -259,6 +257,7 @@ class PetService : Service() {
             settings.mediaPlaybackRequiresUserGesture = false
             settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             clearCache(true)
+            addJavascriptInterface(Bridge(), "AndroidQ")
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView,
@@ -317,9 +316,11 @@ class PetService : Service() {
                     }
                     MotionEvent.ACTION_UP -> {
                         if (abs(event.rawX - downX) < 12 && abs(event.rawY - downY) < 12) {
-                            bounce()
+                            val d = resources.displayMetrics.density
+                            val cx = (event.x / d).toInt()
+                            val cy = (event.y / d).toInt()
                             webView.evaluateJavascript(
-                                "window.tapPet && window.tapPet()",
+                                "window.hitTap && window.hitTap(" + cx + "," + cy + ")",
                                 null
                             )
                         }
