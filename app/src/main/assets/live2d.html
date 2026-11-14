@@ -41,6 +41,7 @@ function loadScript(src) {
 
     var model = await PIXI.live2d.Live2DModel.from('/model/' + encodeURI(modelPath), { autoInteract: false });
     app.stage.addChild(model);
+    model.autoUpdate = false;
 
     var b = model.getLocalBounds();
     var scale = Math.min(app.screen.width / b.width, app.screen.height / b.height) * 0.98;
@@ -48,6 +49,8 @@ function loadScript(src) {
     model.x = (app.screen.width - b.width * scale) / 2 - b.x * scale;
     model.y = (app.screen.height - b.height * scale) / 2 - b.y * scale;
     model.anchor.set(0, 0);
+
+    app.renderer.render(app.stage);
 
     var sj = model.internalModel.settings.json || {};
     var motions = {};
@@ -62,22 +65,6 @@ function loadScript(src) {
       });
     });
 
-    var firstFile = null;
-    Object.keys(motions).forEach(function (k) {
-      if (!firstFile && motions[k].length > 0) firstFile = motions[k][0].File;
-    });
-
-    if (firstFile) {
-      var u = '/model/' + dir + firstFile;
-      try {
-        var r = await fetch(u);
-        var txt = await r.text();
-        dbg('fetch ' + firstFile + ' -> ' + r.status + ' len=' + txt.length);
-      } catch (e) {
-        dbg('fetch err ' + e);
-      }
-    }
-
     var mgr = model.internalModel.motionManager;
     mgr.definitions = motions;
     var groups = Object.keys(motions);
@@ -85,9 +72,29 @@ function loadScript(src) {
 
     if (groups.length > 0) {
       var g0 = groups.indexOf('Idle') >= 0 ? 'Idle' : groups[0];
-      try { mgr.startMotion(g0, 0, 1); dbg('start ' + g0); }
-      catch (e) { dbg('start err ' + e); }
+      try { mgr.startMotion(g0, 0, 1); dbg('start ' + g0); } catch (e) { dbg('start err ' + e); }
     }
+
+    var last = performance.now();
+    var frames = 0;
+    var loop = setInterval(function () {
+      var now = performance.now();
+      var dt = (now - last) / 1000;
+      last = now;
+      if (dt > 0.1) dt = 0.1;
+
+      try {
+        var core = model.internalModel.coreModel;
+        var t = now / 1000;
+        core.setParameterValueById('ParamBreath', (Math.sin(t * 2) + 1) / 2);
+      } catch (e) {}
+
+      try { model.update(dt); } catch (e) {}
+      try { app.renderer.render(app.stage); } catch (e) {}
+      frames++;
+    }, 33);
+
+    setTimeout(function () { dbg('frames=' + frames); }, 3000);
 
     window.tapPet = function () {
       try {
