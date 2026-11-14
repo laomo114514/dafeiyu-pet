@@ -66,7 +66,14 @@ var app, model, groups = [], ticks = 0;
     dbg('groups=' + groups.join(','));
 
     var g0 = groups.indexOf('Idle') >= 0 ? 'Idle' : groups[0];
-    try { mgr.startMotion(g0, 0, 1); dbg('start ' + g0); } catch (e) { dbg('start err ' + e); }
+    try {
+      var r = model.motion(g0, 0, 3);
+      dbg('motion called, returns ' + (r ? 'obj' : 'null'));
+      if (r && r.then) {
+        r.then(function (ok) { dbg('motion resolved=' + ok); })
+         .catch(function (e) { dbg('motion reject ' + e); });
+      }
+    } catch (e) { dbg('motion err ' + e); }
 
     var last = performance.now();
     setInterval(function () {
@@ -86,14 +93,14 @@ var app, model, groups = [], ticks = 0;
         dbg('t=' + ticks + ' X=' + v.toFixed(2) + ' Z=' + v2.toFixed(2) +
             ' grp=' + (mgr.currentGroup || '-') +
             ' mot=' + (mgr.currentMotion ? 'Y' : 'N'));
-      } catch (e) { dbg('sample err ' + e); }
-    }, 800);
+      } catch (e) {}
+    }, 1200);
 
     window.hitTap = function () {
       try {
         var g = groups.indexOf('TapBody') >= 0 ? 'TapBody' : groups[0];
-        if (g) { mgr.startMotion(g, 0, 1); dbg('tap ' + g); }
-      } catch (e) { dbg('tap err ' + e); }
+        if (g) { model.motion(g, 0, 3); dbg('tap ' + g); }
+      } catch (e) {}
     };
   } catch (e) {
     dbg('load err ' + e);
