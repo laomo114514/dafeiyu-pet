@@ -5,41 +5,36 @@
 <style>
   html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 100%; height: 100%; }
   canvas { position: fixed !important; top: 0 !important; left: 0 !important; }
-  #dbg { position: absolute; top: 0; left: 0; z-index: 99; background: rgba(0,0,0,.78); color: #6f6; font: 10px monospace; padding: 4px; max-width: 100%; white-space: pre-wrap; word-break: break-all; }
 </style>
 </head>
 <body>
-<div id="dbg">start</div>
 <script>
-var dbgEl = document.getElementById('dbg');
-function dbg(m) { dbgEl.textContent += '\n' + m; }
-window.onerror = function (m, s, l) { dbg('ERR ' + m + ' @' + l); };
-
 function loadScript(src) {
   return new Promise(function (res) {
     var s = document.createElement('script');
     s.src = src;
     s.onload = function () { res(); };
-    s.onerror = function () { dbg('FAIL ' + src); res(); };
+    s.onerror = function () { res(); };
     document.head.appendChild(s);
   });
 }
 
+var app, model, groups = [];
+
 (async function () {
   var params = new URLSearchParams(location.search);
   var modelPath = params.get('model') || '';
-  var dir = modelPath.indexOf('/') >= 0 ? modelPath.substring(0, modelPath.lastIndexOf('/') + 1) : '';
 
   await loadScript('/assets/pixi.min.js');
   await loadScript('/assets/live2dcubismcore.min.js');
   await loadScript('/assets/cubism4.min.js');
-  if (typeof PIXI === 'undefined' || !PIXI.live2d) { dbg('no PIXI'); return; }
+  if (typeof PIXI === 'undefined' || !PIXI.live2d) return;
 
   try {
-    var app = new PIXI.Application({ transparent: true, antialias: true, resizeTo: window });
+    app = new PIXI.Application({ transparent: true, antialias: true, resizeTo: window });
     document.body.appendChild(app.view);
 
-    var model = await PIXI.live2d.Live2DModel.from('/model/' + encodeURI(modelPath), { autoInteract: false });
+    model = await PIXI.live2d.Live2DModel.from('/model/' + encodeURI(modelPath), { autoInteract: false });
     app.stage.addChild(model);
     model.autoUpdate = false;
 
@@ -50,62 +45,62 @@ function loadScript(src) {
     model.y = (app.screen.height - b.height * scale) / 2 - b.y * scale;
     model.anchor.set(0, 0);
 
-    app.renderer.render(app.stage);
-
     var sj = model.internalModel.settings.json || {};
-    var motions = {};
     var mg = sj.Motions || {};
+    var motions = {};
     Object.keys(mg).forEach(function (k) {
       motions[k] = mg[k].map(function (m) {
-        return {
-          File: m.File,
-          FadeInTime: m.FadeInTime !== undefined ? m.FadeInTime : 0.5,
-          FadeOutTime: m.FadeOutTime !== undefined ? m.FadeOutTime : 0.5
-        };
+        return { File: m.File, FadeInTime: 0.5, FadeOutTime: 0.5 };
       });
     });
 
     var mgr = model.internalModel.motionManager;
     mgr.definitions = motions;
-    var groups = Object.keys(motions);
-    dbg('groups=' + groups.join(','));
+    groups = Object.keys(motions);
 
     if (groups.length > 0) {
       var g0 = groups.indexOf('Idle') >= 0 ? 'Idle' : groups[0];
-      try { mgr.startMotion(g0, 0, 1); dbg('start ' + g0); } catch (e) { dbg('start err ' + e); }
+      try { mgr.startMotion(g0, 0, 1); } catch (e) {}
     }
 
     var last = performance.now();
-    var frames = 0;
-    var loop = setInterval(function () {
+    setInterval(function () {
       var now = performance.now();
-      var dt = (now - last) / 1000;
+      var dt = Math.min(now - last, 100);
       last = now;
-      if (dt > 0.1) dt = 0.1;
-
-      try {
-        var core = model.internalModel.coreModel;
-        var t = now / 1000;
-        core.setParameterValueById('ParamBreath', (Math.sin(t * 2) + 1) / 2);
-      } catch (e) {}
-
       try { model.update(dt); } catch (e) {}
       try { app.renderer.render(app.stage); } catch (e) {}
-      frames++;
     }, 33);
-
-    setTimeout(function () { dbg('frames=' + frames); }, 3000);
-
-    window.tapPet = function () {
-      try {
-        var g = groups.indexOf('TapBody') >= 0 ? 'TapBody' : groups[0];
-        if (g) { mgr.startMotion(g, 0, 1); dbg('tap -> ' + g); }
-      } catch (e) { dbg('tap err ' + e); }
-    };
   } catch (e) {
-    dbg('load err ' + e);
   }
 })();
+
+function tapOnce() {
+  try {
+    if (!model) return;
+    var mgr = model.internalModel.motionManager;
+    var g = groups.indexOf('TapBody') >= 0 ? 'TapBody' : groups[0];
+    if (g) mgr.startMotion(g, 0, 1);
+    try { model.expression(); } catch (e) {}
+    if (window.AndroidQ) window.AndroidQ.bounceFromJs();
+  } catch (e) {}
+}
+
+window.hitTap = function (x, y) {
+  try {
+    if (!app || !model) return;
+    var w = app.renderer.width;
+    var h = app.renderer.height;
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+
+    var pixels = app.renderer.plugins.extract.pixels(app.stage);
+    var idx = (y * w + x) * 4 + 3;
+    if (pixels[idx] > 20) {
+      tapOnce();
+    }
+  } catch (e) {
+  }
+};
 </script>
 </body>
 </html>
