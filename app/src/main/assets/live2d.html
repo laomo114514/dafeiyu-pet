@@ -51,29 +51,17 @@ var app, model, groups = [], ticks = 0;
     model.y = (app.screen.height - b.height * scale) / 2 - b.y * scale;
     model.anchor.set(0, 0);
 
-    var sj = model.internalModel.settings.json || {};
-    var mg = sj.Motions || {};
-    var motions = {};
-    Object.keys(mg).forEach(function (k) {
-      motions[k] = mg[k].map(function (m) {
-        return { File: m.File, FadeInTime: 0.5, FadeOutTime: 0.5 };
-      });
-    });
-
     var mgr = model.internalModel.motionManager;
-    mgr.definitions = motions;
-    groups = Object.keys(motions);
+    groups = Object.keys(mgr.definitions || {});
     dbg('groups=' + groups.join(','));
 
-    var g0 = groups.indexOf('Idle') >= 0 ? 'Idle' : groups[0];
-    try {
-      var r = model.motion(g0, 0, 3);
-      dbg('motion called, returns ' + (r ? 'obj' : 'null'));
-      if (r && r.then) {
-        r.then(function (ok) { dbg('motion resolved=' + ok); })
-         .catch(function (e) { dbg('motion reject ' + e); });
-      }
-    } catch (e) { dbg('motion err ' + e); }
+    if (groups.indexOf('Idle') >= 0) {
+      model.motion('Idle', 0, 3);
+      dbg('idle started');
+    } else if (groups.length > 0) {
+      model.motion(groups[0], 0, 3);
+      dbg('started ' + groups[0]);
+    }
 
     var last = performance.now();
     setInterval(function () {
@@ -94,7 +82,7 @@ var app, model, groups = [], ticks = 0;
             ' grp=' + (mgr.currentGroup || '-') +
             ' mot=' + (mgr.currentMotion ? 'Y' : 'N'));
       } catch (e) {}
-    }, 1200);
+    }, 1500);
 
     window.hitTap = function () {
       try {
