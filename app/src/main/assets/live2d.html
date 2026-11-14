@@ -27,6 +27,17 @@ function loadScript(src) {
 
 var app, model, groups = [], ticks = 0;
 
+function playRandom(group) {
+  try {
+    var mgr = model.internalModel.motionManager;
+    var list = (mgr.definitions || {})[group];
+    if (!list || list.length === 0) return;
+    var idx = Math.floor(Math.random() * list.length);
+    model.motion(group, idx, 3);
+    dbg('play ' + group + '[' + idx + ']');
+  } catch (e) { dbg('play err ' + e); }
+}
+
 (async function () {
   var params = new URLSearchParams(location.search);
   var modelPath = params.get('model') || '';
@@ -51,17 +62,11 @@ var app, model, groups = [], ticks = 0;
     model.y = (app.screen.height - b.height * scale) / 2 - b.y * scale;
     model.anchor.set(0, 0);
 
-    var mgr = model.internalModel.motionManager;
-    groups = Object.keys(mgr.definitions || {});
+    groups = Object.keys(model.internalModel.motionManager.definitions || {});
     dbg('groups=' + groups.join(','));
 
-    if (groups.indexOf('Idle') >= 0) {
-      model.motion('Idle', 0, 3);
-      dbg('idle started');
-    } else if (groups.length > 0) {
-      model.motion(groups[0], 0, 3);
-      dbg('started ' + groups[0]);
-    }
+    var g0 = groups.indexOf('Idle') >= 0 ? 'Idle' : groups[0];
+    if (g0) playRandom(g0);
 
     var last = performance.now();
     setInterval(function () {
@@ -75,20 +80,16 @@ var app, model, groups = [], ticks = 0;
 
     setInterval(function () {
       try {
-        var core = model.internalModel.coreModel;
-        var v = core.getParameterValueById('ParamAngleX');
-        var v2 = core.getParameterValueById('ParamAngleZ');
-        dbg('t=' + ticks + ' X=' + v.toFixed(2) + ' Z=' + v2.toFixed(2) +
-            ' grp=' + (mgr.currentGroup || '-') +
+        var mgr = model.internalModel.motionManager;
+        dbg('t=' + ticks + ' grp=' + (mgr.currentGroup || '-') +
             ' mot=' + (mgr.currentMotion ? 'Y' : 'N'));
       } catch (e) {}
-    }, 1500);
+    }, 2000);
 
     window.hitTap = function () {
-      try {
-        var g = groups.indexOf('TapBody') >= 0 ? 'TapBody' : groups[0];
-        if (g) { model.motion(g, 0, 3); dbg('tap ' + g); }
-      } catch (e) {}
+      if (groups.indexOf('TapBody') >= 0) playRandom('TapBody');
+      else if (groups.length > 0) playRandom(groups[0]);
+      try { model.expression(); } catch (e) {}
     };
   } catch (e) {
     dbg('load err ' + e);
