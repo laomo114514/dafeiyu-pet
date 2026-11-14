@@ -11,7 +11,7 @@
 <body>
 <div id="dbg"></div>
 <script>
-var DEBUG = false;   // ← 想调试就改成 true
+var DEBUG = false;
 
 var dbgEl = document.getElementById('dbg');
 function dbg(m) {
@@ -75,7 +75,21 @@ function playRandom(group) {
     dbg('idle=' + idleGroup);
 
     if (idleGroup) playRandom(idleGroup);
-    setInterval(function () { if (idleGroup) playRandom(idleGroup); }, 25000);
+
+    function scheduleIdle() {
+      var delay = 20000 + Math.random() * 25000;
+      setTimeout(function () {
+        if (groups.length > 0) {
+          var g = groups.indexOf('TapBody') >= 0
+            ? (Math.random() < 0.5 ? 'TapBody' : idleGroup)
+            : idleGroup;
+          playRandom(g);
+          try { model.expression(); } catch (e) {}
+        }
+        scheduleIdle();
+      }, delay);
+    }
+    scheduleIdle();
 
     var last = performance.now();
     setInterval(function () {
@@ -84,7 +98,7 @@ function playRandom(group) {
       last = now;
       try { model.update(dt); } catch (e) {}
       try { app.renderer.render(app.stage); } catch (e) {}
-    }, 33);
+    }, 50);
 
     window.hitTap = function () {
       if (groups.indexOf('TapBody') >= 0) playRandom('TapBody');
